@@ -9,6 +9,7 @@ import fr.xephi.authme.initialization.SettingsDependent;
 import fr.xephi.authme.output.ConsoleLoggerFactory;
 import fr.xephi.authme.process.Management;
 import fr.xephi.authme.service.BukkitService;
+import fr.xephi.authme.settings.AllowedProxyUuidLoader;
 import fr.xephi.authme.settings.Settings;
 import fr.xephi.authme.settings.properties.HooksSettings;
 import org.bukkit.entity.Player;
@@ -17,6 +18,7 @@ import org.bukkit.plugin.messaging.PluginMessageListener;
 
 import javax.inject.Inject;
 import java.util.Optional;
+import java.util.UUID;
 
 public class BungeeReceiver implements PluginMessageListener, SettingsDependent {
 
@@ -26,29 +28,37 @@ public class BungeeReceiver implements PluginMessageListener, SettingsDependent 
     private final BukkitService bukkitService;
     private final ProxySessionManager proxySessionManager;
     private final Management management;
+    private final AllowedProxyUuidLoader allowedProxyUUIDLoader;
 
     private boolean isEnabled;
+    private boolean velocity;
 
     @Inject
     BungeeReceiver(AuthMe plugin, BukkitService bukkitService, ProxySessionManager proxySessionManager,
-                   Management management, Settings settings) {
+                   Management management, Settings settings, AllowedProxyUuidLoader allowedProxyUUIDLoader) {
         this.plugin = plugin;
         this.bukkitService = bukkitService;
         this.proxySessionManager = proxySessionManager;
         this.management = management;
+        this.allowedProxyUUIDLoader = allowedProxyUUIDLoader;
         reload(settings);
     }
 
     @Override
     public void reload(Settings settings) {
-        this.isEnabled = settings.getProperty(HooksSettings.BUNGEECORD);
-        if (this.isEnabled) {
-            this.isEnabled = bukkitService.isBungeeCordConfiguredForSpigot().orElse(false);
-        }
+        this.velocity = settings.getProperty(HooksSettings.VELOCITY);
+        this.isEnabled = settings.getProperty(HooksSettings.BUNGEECORD) || velocity;
+
         if (this.isEnabled) {
             final Messenger messenger = plugin.getServer().getMessenger();
-            if (!messenger.isIncomingChannelRegistered(plugin, "BungeeCord")) {
-                messenger.registerIncomingPluginChannel(plugin, "BungeeCord", this);
+            if (!velocity) {
+                if (!messenger.isIncomingChannelRegistered(plugin, "BungeeCord")) {
+                    messenger.registerIncomingPluginChannel(plugin, "BungeeCord", this);
+                }
+            } else {
+                if (!messenger.isIncomingChannelRegistered(plugin, "authme:main")) {
+                    messenger.registerIncomingPluginChannel(plugin, "authme:main", this);
+                }
             }
         }
     }
@@ -64,6 +74,13 @@ public class BungeeReceiver implements PluginMessageListener, SettingsDependent 
         byte[] dataBytes = new byte[dataLength];
         in.readFully(dataBytes);
         ByteArrayDataInput dataIn = ByteStreams.newDataInput(dataBytes);
+
+        if (velocity) {
+            final String uuid = dataIn.readUTF();
+            if (!allowedProxyUUIDLoader.isAllowedProxy(UUID.fromString(uuid))) {
+                return;
+            }
+        }
 
         // Parse type
         String typeId = dataIn.readUTF();
@@ -99,6 +116,13 @@ public class BungeeReceiver implements PluginMessageListener, SettingsDependent 
      * @param in the input to handle
      */
     private void handle(ByteArrayDataInput in) {
+        if (velocity) {
+            final String uuid = in.readUTF();
+            if (!allowedProxyUUIDLoader.isAllowedProxy(UUID.fromString(uuid))) {
+                logger.debug("Received a plugin message from an invalid proxy!");
+                return;
+            }
+        }
         // Parse type
         String typeId = in.readUTF();
         Optional<MessageType> type = MessageType.fromId(typeId);

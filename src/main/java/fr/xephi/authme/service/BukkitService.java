@@ -3,6 +3,7 @@ package fr.xephi.authme.service;
 import fr.xephi.authme.AuthMe;
 import fr.xephi.authme.initialization.SettingsDependent;
 import fr.xephi.authme.settings.Settings;
+import fr.xephi.authme.settings.properties.HooksSettings;
 import fr.xephi.authme.settings.properties.PluginSettings;
 import org.bukkit.BanEntry;
 import org.bukkit.BanList;
@@ -35,6 +36,7 @@ public class BukkitService implements SettingsDependent {
 
     private final AuthMe authMe;
     private boolean useAsyncTasks;
+    private String pluginChannel;
 
     @Inject
     BukkitService(AuthMe authMe, Settings settings) {
@@ -295,6 +297,11 @@ public class BukkitService implements SettingsDependent {
     @Override
     public void reload(Settings settings) {
         useAsyncTasks = settings.getProperty(PluginSettings.USE_ASYNC_TASKS);
+        if (settings.getProperty(HooksSettings.VELOCITY)) {
+            pluginChannel = "authme:main";
+        } else {
+            pluginChannel = "BungeeCord";
+        }
     }
 
     /**
@@ -304,7 +311,7 @@ public class BukkitService implements SettingsDependent {
      * @param bytes the message
      */
     public void sendBungeeMessage(Player player, byte[] bytes) {
-        player.sendPluginMessage(authMe, "BungeeCord", bytes);
+        player.sendPluginMessage(authMe, pluginChannel, bytes);
     }
 
     /**
